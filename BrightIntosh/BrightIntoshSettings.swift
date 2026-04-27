@@ -69,14 +69,14 @@ class BrightIntoshSettings {
         }
     }
 
-    public var brightness: Float = BrightIntoshSettings.getUserDefault(key: "brightness", defaultValue: getDeviceMaxBrightness()) {
+    public var brightness: Float = BrightIntoshSettings.getUserDefault(key: "brightness", defaultValue: 1.0) {
         didSet {
             BrightIntoshSettings.defaults.setValue(brightness, forKey: "brightness")
             callListeners(setting: "brightness")
         }
     }
     
-    public var cliBrightness: Float = BrightIntoshSettings.getUserDefault(key: "cliBrightness", defaultValue: getDeviceMaxBrightness()) {
+    public var cliBrightness: Float = BrightIntoshSettings.getUserDefault(key: "cliBrightness", defaultValue: 1.0) {
         didSet {
             BrightIntoshSettings.defaults.setValue(cliBrightness, forKey: "cliBrightness")
             callListeners(setting: "cliBrightness")
@@ -151,6 +151,7 @@ class BrightIntoshSettings {
         // Load launch at login status
         launchAtLogin = SMAppService.mainApp.status == SMAppService.Status.enabled
         migrateUserDefaultsToAppGroups();
+        migrateBrightnessToPercentage();
         
         activeObserver = BrightIntoshSettings.defaults.observe(\.active, options: [.initial, .new], changeHandler: { (defaults, change) in
             Task { @MainActor in
@@ -166,6 +167,7 @@ class BrightIntoshSettings {
                 }
             }
         })
+        
     }
     
     private func refreshState() {
@@ -208,6 +210,13 @@ class BrightIntoshSettings {
             BrightIntoshSettings.defaults.set(true, forKey: didMigrateToAppGroups)
             refreshState();
             print("Successfully migrated defaults")
+        }
+    }
+
+    /// Migrate brightness to percentage (0-100), as the previous value was a float between 1.0 and getDeviceMaxBrightness().
+    private func migrateBrightnessToPercentage() {
+        if brightness > 1.0 {
+            brightness = (brightness-1) / (getDeviceMaxBrightness()-1)
         }
     }
 }

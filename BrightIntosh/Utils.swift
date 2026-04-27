@@ -136,6 +136,13 @@ func getDeviceMaxBrightness() -> Float {
     return 1.59
 }
 
+func getScreenRefGamma(_ screen: NSScreen) -> Float {
+    if let displayId = screen.displayId, CGDisplayIsBuiltin(displayId) != 0 {
+        return getDeviceMaxBrightness()
+    }
+    return 1.6
+}
+
 func getStoreKitErrorMessage(_ error: StoreKitError) -> String {
     let errorDescription = error.errorDescription ?? "N/A"
     let recoverySuggestion = error.recoverySuggestion ?? "N/A"

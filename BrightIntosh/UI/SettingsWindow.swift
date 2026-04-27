@@ -154,7 +154,7 @@ struct BasicSettings: View {
             Form() {
                 Section(header: Text("Brightness").bold()) {
                     Toggle("Increased brightness", isOn: $viewModel.brightIntoshActiveToggle)
-                    Slider(value: $viewModel.brightnessSlider, in: 1.0...getDeviceMaxBrightness()) {
+                    Slider(value: $viewModel.brightnessSlider, in: 0.0...1.0) {
                         Text("Brightness")
                     }
                     Label(
