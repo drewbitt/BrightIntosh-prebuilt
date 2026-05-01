@@ -72,7 +72,7 @@ class GammaTechnique: BrightnessTechnique {
     
     private let hdrReadyThreshold = 1.05
     private let hdrEngageTimeout: TimeInterval = 2.1
-    private let hdrRetryCooldownStepSeconds = 30
+    private let hdrRetryCooldownStepSeconds = 20
     private let hdrRetryCooldownMaxSeconds = 120
     private let defaultPollInterval: Duration = .milliseconds(500)
     private let fastPollInterval: Duration = .milliseconds(16)
