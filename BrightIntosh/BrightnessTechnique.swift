@@ -72,15 +72,20 @@ class GammaTechnique: BrightnessTechnique {
     
     private let hdrReadyThreshold = 1.05
     private let hdrEngageTimeout: TimeInterval = 2.1
-    private let hdrRetryCooldownStepSeconds = 30
+    private let hdrRetryCooldownStepSeconds = 20
     private let hdrRetryCooldownMaxSeconds = 120
     private let defaultPollInterval: Duration = .milliseconds(500)
     private let fastPollInterval: Duration = .milliseconds(16)
     private let fastPollDuration: TimeInterval = 30
     private var fastPollUntil: Date?
     
-    private static func edrGammaFactor(userBrightness: Float, maxEdr: CGFloat) -> Float {
-        1 + (userBrightness - 1) * Float(maxEdr) / 4.0
+    private static func edrGammaFactor(userBrightness: Float, maxScreenBrightness: Float, maxEdr: CGFloat) -> Float {
+        let referenceEdr: Float = 4.0 // This value is some empirically determined value that macOS usually allows.
+        if userBrightness > 0.995 {
+            // When user brightess is 100%, use full EDR capability even when it's higher than referenceEdr
+            return 1 + (maxScreenBrightness - 1) * Float(maxEdr) / referenceEdr
+        }
+        return 1 + (maxScreenBrightness - 1) * min(Float(maxEdr) / referenceEdr, userBrightness)
     }
     
     override func enable() {
@@ -255,6 +260,7 @@ class GammaTechnique: BrightnessTechnique {
             
             let factor = Self.edrGammaFactor(
                 userBrightness: BrightIntoshSettings.shared.brightness,
+                maxScreenBrightness: getScreenRefGamma(screen),
                 maxEdr: screen.maximumExtendedDynamicRangeColorComponentValue
             )
             if lastFactor.map({ abs($0 - factor) > 0.001 }) ?? true {
@@ -280,6 +286,7 @@ class GammaTechnique: BrightnessTechnique {
                   let gammaTable = baselineGammaTables[displayId] else { continue }
             let factor = Self.edrGammaFactor(
                 userBrightness: BrightIntoshSettings.shared.brightness,
+                maxScreenBrightness: getScreenRefGamma(screen),
                 maxEdr: screen.maximumExtendedDynamicRangeColorComponentValue
             )
             gammaTable.setTableForScreen(displayId: displayId, factor: factor)

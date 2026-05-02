@@ -479,9 +479,9 @@ class StatusBarMenu : NSObject, NSMenuDelegate {
         self.sliderContainerViewRef = sliderContainerView
 
         let brightnessSlider = if #available(macOS 26.0, *) {
-            NSSlider(value: Double(BrightIntoshSettings.shared.brightness), minValue: 1.0, maxValue: Double(getDeviceMaxBrightness()), target: self, action: #selector(brightnessSliderMoved))
+            NSSlider(value: Double(BrightIntoshSettings.shared.brightness), minValue: 0.0, maxValue: 1.0, target: self, action: #selector(brightnessSliderMoved))
         } else {
-            StyledSlider(value: Double(BrightIntoshSettings.shared.brightness), minValue: 1.0, maxValue: Double(getDeviceMaxBrightness()), target: self, action: #selector(brightnessSliderMoved))
+            StyledSlider(value: Double(BrightIntoshSettings.shared.brightness), minValue: 0.0, maxValue: 1.0, target: self, action: #selector(brightnessSliderMoved))
         }
         brightnessSlider.target = self
         sliderContainerView.addSubview(brightnessSlider)

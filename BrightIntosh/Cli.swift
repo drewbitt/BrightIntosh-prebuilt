@@ -23,13 +23,13 @@ import Foundation
         print("Usage: brightintosh set <0-100>")
         return
     }
-    BrightIntoshSettings.shared.cliBrightness = 1.0 + (getDeviceMaxBrightness() - 1.0) * Float(brightnessValue) / 100.0
+    BrightIntoshSettings.shared.cliBrightness = max(0.0, min(1.0, Float(brightnessValue) / 100.0))
 }
 
 @MainActor func statusCli() {
     let status = BrightIntoshSettings.shared.brightintoshActive
     let brightness = BrightIntoshSettings.shared.brightness
-    let brightnessPercentage = Int(round((brightness - 1.0) / (getDeviceMaxBrightness() - 1.0) * 100.0))
+    let brightnessPercentage = Int(round(brightness * 100.0))
     print("Status: \(status ? "Enabled" : "Disabled")")
     print("Brightness: \(brightnessPercentage)")
 }
@@ -55,7 +55,7 @@ Note: This CLI is additional and does require the main app to be running.
 Commands:
   enable       Enable BrightIntosh
   disable      Disable BrightIntosh
-  set <value>  Set brightness offset (0-100)
+  set <value>  Set maximum additional brightness (0-100)
   status       Show current status and brightness
   toggle       Toggle BrightIntosh on/off
   help         Show this help message
