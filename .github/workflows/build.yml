@@ -8,6 +8,11 @@ on:
         required: false
         default: main
         type: string
+      force:
+        description: 'Build even if upstream SHA matches the last release'
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: '17 9 * * *'   # daily at 09:17 UTC
 
@@ -19,13 +24,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.compare.outputs.should_build }}
+      upstream_sha: ${{ steps.upstream.outputs.sha }}
+      upstream_short: ${{ steps.upstream.outputs.short }}
+    steps:
+      - name: Resolve upstream ref
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REF='${{ github.event.inputs.ref || ''main'' }}'
+          SHA=$(gh api "repos/niklasr22/BrightIntosh/commits/${REF}" --jq .sha)
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "short=${SHA:0:7}" >> "$GITHUB_OUTPUT"
+          echo "Upstream ${REF} -> ${SHA}"
+
+      - name: Compare with last release
+        id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+        run: |
+          if [ '${{ github.event.inputs.force }}' = 'true' ]; then
+            echo "force=true requested — building."
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          BODY=$(gh release view latest --json body --jq .body 2>/dev/null || true)
+          if printf '%s' "$BODY" | grep -qF "upstream-sha: ${UPSTREAM_SHA}"; then
+            echo "Upstream unchanged (${UPSTREAM_SHA}) — skipping build."
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Upstream changed or no SHA marker on existing release — building."
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: check
+    if: needs.check.outputs.should_build == 'true'
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
         with:
           repository: niklasr22/BrightIntosh
-          ref: ${{ github.event.inputs.ref || 'main' }}
+          ref: ${{ needs.check.outputs.upstream_sha }}
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -64,13 +110,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          UPSTREAM_SHA: ${{ needs.check.outputs.upstream_sha }}
+          UPSTREAM_SHORT: ${{ needs.check.outputs.upstream_short }}
         run: |
           ditto -c -k --keepParent "${{ steps.sign.outputs.app }}" BrightIntosh.zip
-          SHA=$(git rev-parse --short HEAD)
           DATE=$(date -u +%Y-%m-%d)
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
           gh release create latest BrightIntosh.zip \
-            --title "Latest build — ${DATE} (upstream ${SHA})" \
-            --notes "Auto-built from [niklasr22/BrightIntosh@${SHA}](https://github.com/niklasr22/BrightIntosh/commit/${SHA}). Non-Store scheme, ad-hoc signed.
+            --title "Latest build — ${DATE} (upstream ${UPSTREAM_SHORT})" \
+            --notes "Auto-built from [niklasr22/BrightIntosh@${UPSTREAM_SHORT}](https://github.com/niklasr22/BrightIntosh/commit/${UPSTREAM_SHA}). Non-Store scheme, ad-hoc signed.
 
-          **Install:** unzip, then \`xattr -cr /Applications/BrightIntosh.app\` to clear quarantine."
+          **Install:** unzip, then \`xattr -cr /Applications/BrightIntosh.app\` to clear quarantine.
+
+          <!-- upstream-sha: ${UPSTREAM_SHA} -->"
