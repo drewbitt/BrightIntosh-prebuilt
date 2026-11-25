@@ -1,0 +1,55 @@
+name: Retry queued-out builds
+
+# macOS arm64 hosted runners intermittently fail to be acquired: the build job
+# sits ~15 min with zero steps and is cancelled, which fails the run. Retry only
+# that case — a build that actually executed its steps is a real failure.
+
+on:
+  schedule:
+    - cron: '37 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Retry latest run when its build job never started
+        run: |
+          set -euo pipefail
+          CANDIDATE=$(gh run list --workflow build.yml --limit 1 \
+            --json databaseId,status,conclusion,runAttempt \
+            --jq '.[0] | select(.status=="completed")
+                        | select(.conclusion=="failure" or .conclusion=="cancelled")
+                        | select(.runAttempt < 4)
+                        | "\(.databaseId) \(.runAttempt)"' || true)
+          if [ -z "${CANDIDATE}" ]; then
+            echo "No retryable build run."
+            exit 0
+          fi
+          RUN=${CANDIDATE% *}
+          ATTEMPT=${CANDIDATE#* }
+
+          JOB=$(gh api "repos/${GH_REPO}/actions/runs/${RUN}/jobs" \
+            --jq '[.jobs[] | select(.name=="build")][0] | "\(.databaseId) \(.steps|length)"')
+          if [ -z "${JOB}" ] || [ "${JOB}" = "null null" ]; then
+            echo "Run ${RUN} has no build job."
+            exit 0
+          fi
+          JOB_ID=${JOB% *}
+          STEPS=${JOB#* }
+
+          if [ "${STEPS}" != "0" ]; then
+            echo "Build job ran ${STEPS} step(s) — real failure, not retrying."
+            exit 0
+          fi
+
+          echo "Build job never acquired a runner; retrying run ${RUN} (attempt ${ATTEMPT})"
+          gh run rerun "${RUN}" --job "${JOB_ID}"
