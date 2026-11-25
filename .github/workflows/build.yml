@@ -46,8 +46,13 @@ jobs:
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "short=${SHORT}" >> "$GITHUB_OUTPUT"
           echo "Upstream ${REF} -> ${SHA}"
-          # Build only if this upstream commit doesn't already have a release.
-          if [ "${FORCE}" = "true" ] || ! gh release view "build-${SHORT}" >/dev/null 2>&1; then
+          # Build only if this upstream commit has no release carrying the zip.
+          # Checking the asset too means a release created without its artifact
+          # (or with a failed upload) still counts as unbuilt.
+          HAVE=$(gh release view "build-${SHORT}" --json assets \
+            --jq '[.assets[] | select(.name=="BrightIntosh.zip" and .state=="uploaded" and .size>0)] | length' \
+            2>/dev/null || echo 0)
+          if [ "${FORCE}" = "true" ] || [ "${HAVE}" = "0" ]; then
             echo "build=true" >> "$GITHUB_OUTPUT"
           else
             echo "build=false" >> "$GITHUB_OUTPUT"
@@ -122,13 +127,28 @@ jobs:
           gh release create "build-${SHORT}" BrightIntosh.zip \
             --title "Build ${DATE} — upstream ${SHORT}" \
             --notes "${NOTES}" --latest
+          # Releases in this repo all share one created_at, so GitHub's own
+          # newest-first pick for `latest` is a coin flip. Pin it.
+          gh release edit "build-${SHORT}" --latest
 
       - name: Prune old releases (keep newest 10)
+        env:
+          SHORT: ${{ needs.check.outputs.short }}
         run: |
           set -euo pipefail
-          gh release list -L 100 --json tagName,createdAt \
-            --jq 'sort_by(.createdAt) | reverse | .[10:][].tagName' \
-            | while read -r t; do
-                echo "Pruning ${t}"
-                gh release delete "$t" --cleanup-tag --yes
-              done
+          # Order by publishedAt: created_at is identical across every release
+          # here, which made the old sort an arbitrary slice — it deleted the
+          # release created seconds earlier. Never drop the current tag or the
+          # one carrying the `latest` pointer.
+          gh release list -L 100 --json tagName,publishedAt,isLatest \
+            --jq 'sort_by(.publishedAt // .createdAt) | reverse | .[10:]
+                  | map(select(.isLatest | not)) | .[].tagName' \
+            | grep -vx -e "build-${SHORT}" > "${RUNNER_TEMP}/prune.txt" || true
+          if [ ! -s "${RUNNER_TEMP}/prune.txt" ]; then
+            echo "Nothing to prune."
+            exit 0
+          fi
+          while read -r t; do
+            echo "Pruning ${t}"
+            gh release delete "$t" --cleanup-tag --yes
+          done < "${RUNNER_TEMP}/prune.txt"
